@@ -1,0 +1,24 @@
+# Data & Output Folders
+processed/
+faers_ascii_*/
+*.csv
+*.parquet
+*.txt
+*.pdf
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
