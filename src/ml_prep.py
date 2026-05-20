@@ -8,40 +8,38 @@ def prep_ml_data(processed_dir, output_file):
     print(f"Loading data from {stats_file}...")
     df = pd.read_parquet(stats_file)
     
-    # We want to predict risk severity for a drug pair.
-    # To reduce size and noise, we group by drug_a and drug_b, taking the max risk_score they produce together.
     print("Aggregating max risk per pair...")
     pair_df = df.groupby(['drug_a', 'drug_b']).agg(
         max_risk=('risk_score', 'max'),
         total_reports=('pair_total', 'first')
     ).reset_index()
     
-    # Using the FULL dataset without downsampling for maximum accuracy
     pair_df = pair_df.sort_values(by='max_risk', ascending=False)
     ml_df = pair_df
-        
-    print(f"Downsampled dataset to {len(ml_df)} pairs for training.")
     
-    # Feature Engineering
-    print("Engineering features (Target & Frequency Encoding)...")
-    # Get overall frequencies from the full dataset for accuracy
+    print("Engineering ADVANCED features (Frequency, Target Encoding, Feature Crosses)...")
     all_drugs = pd.concat([df['drug_a'], df['drug_b']])
     drug_freq = all_drugs.value_counts().to_dict()
     
     ml_df['drug_a_freq'] = ml_df['drug_a'].map(drug_freq).fillna(0)
     ml_df['drug_b_freq'] = ml_df['drug_b'].map(drug_freq).fillna(0)
     
-    # Calculate global mean risk per drug
     d_a_risk = ml_df.groupby('drug_a')['max_risk'].mean()
     d_b_risk = ml_df.groupby('drug_b')['max_risk'].mean()
-    
-    # Combine the means
     drug_mean_risk = pd.concat([d_a_risk, d_b_risk]).groupby(level=0).mean().to_dict()
     
     ml_df['drug_a_mean_risk'] = ml_df['drug_a'].map(drug_mean_risk).fillna(0)
     ml_df['drug_b_mean_risk'] = ml_df['drug_b'].map(drug_mean_risk).fillna(0)
     
-    # Save the encoding dictionaries so the app can use them during inference
+    # Advanced Feature Crosses
+    # 1. Combined Interactive Risk
+    ml_df['combined_risk_interaction'] = ml_df['drug_a_mean_risk'] * ml_df['drug_b_mean_risk']
+    # 2. Risk Difference
+    ml_df['risk_difference'] = abs(ml_df['drug_a_mean_risk'] - ml_df['drug_b_mean_risk'])
+    # 3. Frequency Ratio
+    ml_df['freq_ratio'] = ml_df[['drug_a_freq', 'drug_b_freq']].min(axis=1) / (ml_df[['drug_a_freq', 'drug_b_freq']].max(axis=1) + 1e-6)
+    
+    # Save Encoders
     model_dir = os.path.join(os.path.dirname(output_file), "..", "models")
     os.makedirs(model_dir, exist_ok=True)
     
@@ -51,8 +49,7 @@ def prep_ml_data(processed_dir, output_file):
     }
     joblib.dump(encoders, os.path.join(model_dir, "encoders.pkl"))
     
-    # Save the training data
-    print(f"Saving ML training data to {output_file}...")
+    print(f"Saving Advanced ML training data to {output_file}...")
     ml_df.to_parquet(output_file, index=False)
     print("Done!")
 
